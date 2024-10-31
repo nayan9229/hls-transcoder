@@ -2,84 +2,74 @@ package main
 
 import (
 	"context"
+	"fmt"
+	stdlog "log"
+	"os"
 
-	"github.com/nayan9229/hls-transcoder/transcoder"
+	"github.com/joeshaw/envdecode"
+	"github.com/nayan9229/hls-transcoder/server"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/cobra"
 )
 
+var appname = "transcoding-service"
+
+var release string
+
 func main() {
-	// str, err := os.Getwd()
 
-	// fmt.Printf("str: %T, %v\n", str, str)
-	// fmt.Printf("err: %T, %v\n", err, err)
+	var cfg server.Config
 
-	profiles := map[string]transcoder.VideoProfile{
-		"1080p": {
-			Width:   1080,
-			Height:  1920,
-			Bitrate: 5000,
-			Quality: 32,
-		},
-		"720p": {
-			Width:   720,
-			Height:  1280,
-			Bitrate: 2800,
-			Quality: 32,
-		},
-		"540p": {
-			Width:   540,
-			Height:  960,
-			Bitrate: 1800,
-			Quality: 32,
-		},
-		"480p": {
-			Width:   480,
-			Height:  854,
-			Bitrate: 480,
-			Quality: 32,
-		},
-		"360p": {
-			Width:   360,
-			Height:  640,
-			Bitrate: 800,
-			Quality: 32,
-		},
-		"vp9_1080p": {
-			Width:   1080,
-			Height:  1920,
-			Bitrate: 5000,
-			Quality: 32,
-		},
-		"vp9_720p": {
-			Width:   720,
-			Height:  1280,
-			Bitrate: 2800,
-			Quality: 32,
-		},
-		"vp9_540p": {
-			Width:   540,
-			Height:  960,
-			Bitrate: 1800,
-			Quality: 32,
-		},
-		"vp9_480p": {
-			Width:   480,
-			Height:  854,
-			Bitrate: 480,
-			Quality: 32,
-		},
-		"vp9_360p": {
-			Width:   360,
-			Height:  640,
-			Bitrate: 800,
-			Quality: 32,
+	if err := envdecode.StrictDecode(&cfg); err != nil {
+		log.Fatal().Err(err).
+			Msg("failed to process environment variables")
+	}
+
+	cfg.AppName = appname
+	cfg.Release = release
+
+	LogSetup(appname, cfg.Environment == "dev")
+
+	cmd := newCommand(&cfg)
+
+	if err := cmd.Execute(); err != nil {
+		die(err)
+	}
+}
+
+func die(err error) {
+	fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
+}
+
+func newCommand(cfg *server.Config) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "message-service",
+		Short: "Message brokering and channel management",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				srv = server.NewServer(cfg)
+				ctx = context.Background()
+			)
+
+			go srv.ProcessTranscoding(ctx)
+
+			srv.Serve()
 		},
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	transcoder := transcoder.NewTranscoder(ctx, "https://media.begenuin.com/temp_video/66ab4df2161873b2f738933d_1722943171245.mp4", "", "", profiles)
-	err := transcoder.Transcode()
-	if err != nil {
-		log.Error().Err(err).Msg("Error transcoding video")
+	return cmd
+}
+
+func LogSetup(appname string, dev bool) {
+	baselog := zerolog.New(os.Stdout)
+	if dev {
+		baselog = zerolog.New(zerolog.ConsoleWriter{Out: os.Stdout})
 	}
+	applog := baselog.With().Timestamp().Str("service", appname).Logger()
+	log.Logger = applog
+
+	stdlog.SetFlags(0)
+	stdlog.SetOutput(applog.With().Logger())
 }

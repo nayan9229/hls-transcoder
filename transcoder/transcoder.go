@@ -85,10 +85,10 @@ func NewTranscoder(ctx context.Context, mediaUrl, fFmpeg, fFprobe string, videoP
 		FFprobeBinary:  fFprobe,
 		VideoKeyframes: true,
 
-		segmentLength:    1,
-		segmentOffset:    1,
+		segmentLength:    2,
+		segmentOffset:    2,
 		segmentBufferMin: 1,
-		segmentBufferMax: 2,
+		segmentBufferMax: 4,
 		segmentPrefix:    "chunk",
 
 		ctx: ctx,
@@ -142,7 +142,7 @@ func (t *Transcoder) Transcode() error {
 		// Input specs
 		args = append(args, []string{
 			"-i", t.MediaUrl, // Input file
-			"-force_key_frames", "expr:gte(t,n_forced*10)",
+			"-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%f)", t.segmentLength),
 		}...)
 
 		// Video specs
